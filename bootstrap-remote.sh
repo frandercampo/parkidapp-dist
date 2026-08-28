@@ -5,8 +5,10 @@
 set -euo pipefail
 
 INSTALL_DIR="${PARKIDAPP_INSTALL_DIR:-/var/www/parkidapp-prod}"
+TARGET_DIR="${INSTALL_DIR}"
 STAGING="${PARKIDAPP_STAGING:-/tmp/parkidapp-deploy-$$}"
-REPO="${PARKIDAPP_GITHUB_REPO:-}"
+PARKIDAPP_GITHUB_REPO="${PARKIDAPP_GITHUB_REPO:-frandercampo/parkidapp-dist}"
+REPO="${PARKIDAPP_GITHUB_REPO}"
 TAG="${PARKIDAPP_RELEASE_TAG:-latest}"
 ARCHIVE_NAME="parkidapp-deploy.tar.gz"
 
@@ -89,6 +91,44 @@ restore_runtime() {
   fi
 }
 
+# Migra .env de instalaciones legacy (Node /opt o /var/www/parkidapp) → parkidapp-prod.
+migrate_legacy_env() {
+  if [[ -f "${TARGET_DIR}/.env" ]]; then
+    return 0
+  fi
+  local candidate
+  for candidate in \
+    /var/www/parkidapp/backend/.env \
+    /var/www/parkidapp/.env \
+    /opt/parkidapp/.env
+  do
+    if [[ -f "${candidate}" ]]; then
+      echo "Copiando configuración .env existente desde ${candidate}..."
+      mkdir -p "${TARGET_DIR}"
+      cp "${candidate}" "${TARGET_DIR}/.env"
+      chmod 600 "${TARGET_DIR}/.env"
+      green "Migrado ${candidate} → ${TARGET_DIR}/.env"
+      return 0
+    fi
+  done
+  yellow "No hay .env legacy que migrar."
+}
+
+ensure_db_password() {
+  # Si ya hay .env en destino, install.sh / run_installer reusan DB_PASSWORD de ahí.
+  if [[ -f "${TARGET_DIR}/.env" ]]; then
+    return 0
+  fi
+  if [[ -z "${DB_PASSWORD:-}" ]] && [[ -c /dev/tty ]]; then
+    # shellcheck disable=SC2162
+    read -s -p "Ingrese la contraseña de PostgreSQL para la base de datos: " DB_PASSWORD < /dev/tty
+    echo ""
+  fi
+  DB_PASSWORD="${DB_PASSWORD:-postgres}"
+  export DB_PASSWORD
+  yellow "Primera instalación: usando DB_PASSWORD definido (o default 'postgres')."
+}
+
 download_and_extract() {
   local url
   url="$(resolve_download_url)"
@@ -122,13 +162,17 @@ stage_into_install_dir() {
 run_installer() {
   export PARKIDAPP_INSTALL_DIR="${INSTALL_DIR}"
   export PARKIDAPP_UNATTENDED=1
-  # Si hay .env, install.sh reutiliza DB_PASSWORD y PORT; no hace falta prompt.
+
+  migrate_legacy_env
+  ensure_db_password
+
+  # Si hay .env, install.sh reutiliza DB_PASSWORD y PORT.
   if [[ -f "${INSTALL_DIR}/.env" ]] && [[ -z "${DB_PASSWORD:-}" ]]; then
     DB_PASSWORD="$(grep -E '^DB_PASSWORD=' "${INSTALL_DIR}/.env" | tail -n1 | cut -d= -f2- || true)"
     export DB_PASSWORD
   fi
   if [[ ! -f "${INSTALL_DIR}/.env" ]] && [[ -z "${DB_PASSWORD:-}" ]]; then
-    die "Primera instalación: exportá DB_PASSWORD=... antes de correr el bootstrap"
+    die "Primera instalación: no se pudo resolver DB_PASSWORD"
   fi
 
   # install.sh espera DEPLOY_ROOT con build_assets/ + installer/
@@ -155,6 +199,7 @@ main() {
   require_root
   trap cleanup EXIT
   green "=== ParkidApp bootstrap remoto → ${INSTALL_DIR} ==="
+  green "Repo release: ${REPO} (tag: ${TAG})"
   verify_deps
   command -v rsync >/dev/null 2>&1 || apt-get install -y rsync
   download_and_extract
