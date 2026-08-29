@@ -166,6 +166,19 @@ run_installer() {
   migrate_legacy_env
   ensure_db_password
 
+  # Admin seed (defaults / env). install.sh volverá a collectar en modo desatendido.
+  # shellcheck source=lib-seed.sh
+  if [[ -f "${STAGING}/installer/lib-seed.sh" ]]; then
+    # shellcheck disable=SC1091
+    source "${STAGING}/installer/lib-seed.sh"
+    UNATTENDED=1 collect_admin_params
+  else
+    ADMIN_EMAIL="${ADMIN_EMAIL:-admin@parkid.com.ar}"
+    ADMIN_PASSWORD="${ADMIN_PASSWORD:-Admin1234!}"
+    EMPRESA_NOMBRE="${EMPRESA_NOMBRE:-Mi Organización}"
+    export ADMIN_EMAIL ADMIN_PASSWORD EMPRESA_NOMBRE
+  fi
+
   # Si hay .env, install.sh reutiliza DB_PASSWORD y PORT.
   if [[ -f "${INSTALL_DIR}/.env" ]] && [[ -z "${DB_PASSWORD:-}" ]]; then
     DB_PASSWORD="$(grep -E '^DB_PASSWORD=' "${INSTALL_DIR}/.env" | tail -n1 | cut -d= -f2- || true)"
