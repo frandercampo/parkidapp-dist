@@ -161,25 +161,13 @@ stage_into_install_dir() {
 
 run_installer() {
   export PARKIDAPP_INSTALL_DIR="${INSTALL_DIR}"
+  # Desatendido para defaults de CI; con /dev/tty install.sh pide FE port + admin limpio.
   export PARKIDAPP_UNATTENDED=1
 
   migrate_legacy_env
   ensure_db_password
 
-  # Admin seed (defaults / env). install.sh volverá a collectar en modo desatendido.
-  # shellcheck source=lib-seed.sh
-  if [[ -f "${STAGING}/installer/lib-seed.sh" ]]; then
-    # shellcheck disable=SC1091
-    source "${STAGING}/installer/lib-seed.sh"
-    UNATTENDED=1 collect_admin_params
-  else
-    ADMIN_EMAIL="${ADMIN_EMAIL:-admin@parkid.com.ar}"
-    ADMIN_PASSWORD="${ADMIN_PASSWORD:-Admin1234!}"
-    EMPRESA_NOMBRE="${EMPRESA_NOMBRE:-Mi Organización}"
-    export ADMIN_EMAIL ADMIN_PASSWORD EMPRESA_NOMBRE
-  fi
-
-  # Si hay .env, install.sh reutiliza DB_PASSWORD y PORT.
+  # No forzar defaults de admin aquí: install.sh + lib-seed preguntan vía TTY si es limpia.
   if [[ -f "${INSTALL_DIR}/.env" ]] && [[ -z "${DB_PASSWORD:-}" ]]; then
     DB_PASSWORD="$(grep -E '^DB_PASSWORD=' "${INSTALL_DIR}/.env" | tail -n1 | cut -d= -f2- || true)"
     export DB_PASSWORD
@@ -188,7 +176,7 @@ run_installer() {
     die "Primera instalación: no se pudo resolver DB_PASSWORD"
   fi
 
-  # install.sh espera DEPLOY_ROOT con build_assets/ + installer/
+  # Preservar FRONTEND_PORT/BACKEND_PORT/ADMIN_* si el operador ya los exportó.
   bash "${STAGING}/installer/install.sh"
 }
 
@@ -221,7 +209,8 @@ main() {
   run_installer
   restart_pm2
   echo
-  green "Listo. UI detrás de Nginx en ${INSTALL_DIR}"
+  green "Bootstrap remoto finalizado. Revisá el resumen de install.sh arriba."
+  echo "  Dir: ${INSTALL_DIR}"
   echo "  Logs: pm2 logs parkidapp-backend"
 }
 
