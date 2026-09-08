@@ -161,7 +161,8 @@ stage_into_install_dir() {
 
 run_installer() {
   export PARKIDAPP_INSTALL_DIR="${INSTALL_DIR}"
-  # Desatendido para defaults de CI; con /dev/tty install.sh pide FE port + admin limpio.
+  # Desatendido: install limpia puede pedir FE/admin vía TTY; con .env existente
+  # install.sh reutiliza PORT/Nginx sin bloquear la tubería.
   export PARKIDAPP_UNATTENDED=1
 
   migrate_legacy_env
