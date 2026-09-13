@@ -142,10 +142,13 @@ download_and_extract() {
   [[ -f "${STAGING}/build_assets/parkidapp-server" ]] || die "Tar inválido: falta build_assets/parkidapp-server"
   [[ -d "${STAGING}/build_assets/dist" ]] || die "Tar inválido: falta build_assets/dist"
   [[ -f "${STAGING}/installer/install.sh" ]] || die "Tar inválido: falta installer/install.sh"
+  if [[ ! -f "${STAGING}/build_assets/native/dahua/dahua_bridge" ]]; then
+    yellow "Aviso: kit sin native/dahua/dahua_bridge — NetSDK no operará hasta rebuild."
+  fi
 }
 
 stage_into_install_dir() {
-  # Copia binario + SPA al path de producción; install.sh también copia desde build_assets.
+  # Copia binario + SPA + sidecar Dahua al path de producción; install.sh también copia desde build_assets.
   mkdir -p "${INSTALL_DIR}/dist" "${INSTALL_DIR}/uploads"
   cp -f "${STAGING}/build_assets/parkidapp-server" "${INSTALL_DIR}/parkidapp-server"
   chmod +x "${INSTALL_DIR}/parkidapp-server"
@@ -154,6 +157,20 @@ stage_into_install_dir() {
   else
     rm -rf "${INSTALL_DIR}/dist"
     cp -a "${STAGING}/build_assets/dist" "${INSTALL_DIR}/dist"
+  fi
+  if [[ -d "${STAGING}/build_assets/native/dahua" ]]; then
+    mkdir -p "${INSTALL_DIR}/native"
+    if command -v rsync >/dev/null 2>&1; then
+      rsync -a --delete "${STAGING}/build_assets/native/dahua/" "${INSTALL_DIR}/native/dahua/"
+    else
+      rm -rf "${INSTALL_DIR}/native/dahua"
+      cp -a "${STAGING}/build_assets/native/dahua" "${INSTALL_DIR}/native/dahua"
+    fi
+    chmod +x "${INSTALL_DIR}/native/dahua/dahua_bridge" 2>/dev/null || true
+    if [[ -d "${INSTALL_DIR}/native/dahua/libs/linux64" ]]; then
+      find "${INSTALL_DIR}/native/dahua/libs/linux64" -type f -exec chmod 755 {} +
+      chmod 755 "${INSTALL_DIR}/native/dahua/libs/linux64" || true
+    fi
   fi
   restore_runtime
   green "Actualizado ${INSTALL_DIR} (uploads/.env preservados si existían)"
@@ -169,9 +186,15 @@ run_installer() {
   ensure_db_password
 
   # No forzar defaults de admin aquí: install.sh + lib-seed preguntan vía TTY si es limpia.
-  if [[ -f "${INSTALL_DIR}/.env" ]] && [[ -z "${DB_PASSWORD:-}" ]]; then
-    DB_PASSWORD="$(grep -E '^DB_PASSWORD=' "${INSTALL_DIR}/.env" | tail -n1 | cut -d= -f2- || true)"
-    export DB_PASSWORD
+  if [[ -f "${INSTALL_DIR}/.env" ]]; then
+    if [[ -z "${DB_PASSWORD:-}" ]]; then
+      DB_PASSWORD="$(grep -E '^DB_PASSWORD=' "${INSTALL_DIR}/.env" | tail -n1 | cut -d= -f2- | tr -d '\r"' || true)"
+      export DB_PASSWORD
+    fi
+    if [[ -z "${DB_USER:-}" ]]; then
+      DB_USER="$(grep -E '^DB_USER=' "${INSTALL_DIR}/.env" | tail -n1 | cut -d= -f2- | tr -d '\r"' || true)"
+      [[ -n "${DB_USER}" ]] && export DB_USER
+    fi
   fi
   if [[ ! -f "${INSTALL_DIR}/.env" ]] && [[ -z "${DB_PASSWORD:-}" ]]; then
     die "Primera instalación: no se pudo resolver DB_PASSWORD"
