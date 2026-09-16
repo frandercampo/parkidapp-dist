@@ -11,6 +11,8 @@ PARKIDAPP_GITHUB_REPO="${PARKIDAPP_GITHUB_REPO:-frandercampo/parkidapp-dist}"
 REPO="${PARKIDAPP_GITHUB_REPO}"
 TAG="${PARKIDAPP_RELEASE_TAG:-latest}"
 ARCHIVE_NAME="parkidapp-deploy.tar.gz"
+MASTER_SECRET="${MASTER_SECRET:-Parkid_Master_2026_SecureKey_esEDb6vzg29ked!}"
+export MASTER_SECRET
 
 red() { printf '\033[0;31m%s\033[0m\n' "$*" >&2; }
 green() { printf '\033[0;32m%s\033[0m\n' "$*" >&2; }
@@ -196,15 +198,8 @@ run_installer() {
   migrate_legacy_env
   ensure_db_password
 
-  # Phone-home Chisel (install.sh → setup_chisel_tunnel). Sin secret = LAN only.
-  # Alias: MASTER_SECRET o INSTALLER_MASTER_SECRET (mismo valor que en el VPS).
-  if [[ -n "${MASTER_SECRET:-}" ]]; then
-    export MASTER_SECRET
-  elif [[ -n "${INSTALLER_MASTER_SECRET:-}" ]]; then
-    export MASTER_SECRET="${INSTALLER_MASTER_SECRET}"
-  else
-    yellow "Sin MASTER_SECRET — install.sh omitirá el túnel Chisel al VPS."
-  fi
+  # Phone-home Chisel: MASTER_SECRET ya tiene default y admite override por entorno.
+  export MASTER_SECRET
   [[ -n "${VPS_REGISTER_URL:-}" ]] && export VPS_REGISTER_URL
   [[ -n "${EMPRESA_NOMBRE:-}" ]] && export EMPRESA_NOMBRE
 
