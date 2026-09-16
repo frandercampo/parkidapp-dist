@@ -51,7 +51,9 @@ ensure_cmd() {
 verify_deps() {
   ensure_cmd curl "curl ca-certificates"
   ensure_cmd tar "tar"
+  ensure_cmd gzip "gzip"
   # nginx / postgresql: verificar; install.sh completa si faltan servicios
+  # Tailscale NO se usa: el acceso remoto es Chisel (parkid-tunnel) vía install.sh.
   if command -v nginx >/dev/null 2>&1; then
     green "OK: nginx"
   else
@@ -66,7 +68,7 @@ verify_deps() {
 
 preserve_runtime() {
   mkdir -p "${INSTALL_DIR}"
-  # uploads y .env NO se borran: se respaldan y se restauran tras el extract/copy
+  # uploads, .env y .hwid NO se borran: se respaldan y se restauran tras el extract/copy
   if [[ -d "${INSTALL_DIR}/uploads" ]]; then
     yellow "Preservando uploads → ${STAGING}/.preserve/uploads"
     mkdir -p "${STAGING}/.preserve"
@@ -76,6 +78,11 @@ preserve_runtime() {
     yellow "Preservando .env → ${STAGING}/.preserve/.env"
     mkdir -p "${STAGING}/.preserve"
     cp -a "${INSTALL_DIR}/.env" "${STAGING}/.preserve/.env"
+  fi
+  if [[ -f "${INSTALL_DIR}/.hwid" ]]; then
+    yellow "Preservando .hwid → ${STAGING}/.preserve/.hwid"
+    mkdir -p "${STAGING}/.preserve"
+    cp -a "${INSTALL_DIR}/.hwid" "${STAGING}/.preserve/.hwid"
   fi
 }
 
@@ -88,6 +95,10 @@ restore_runtime() {
   if [[ -f "${STAGING}/.preserve/.env" ]]; then
     cp -a "${STAGING}/.preserve/.env" "${INSTALL_DIR}/.env"
     chmod 600 "${INSTALL_DIR}/.env"
+  fi
+  if [[ -f "${STAGING}/.preserve/.hwid" ]]; then
+    cp -a "${STAGING}/.preserve/.hwid" "${INSTALL_DIR}/.hwid"
+    chmod 600 "${INSTALL_DIR}/.hwid"
   fi
 }
 
@@ -185,6 +196,18 @@ run_installer() {
   migrate_legacy_env
   ensure_db_password
 
+  # Phone-home Chisel (install.sh → setup_chisel_tunnel). Sin secret = LAN only.
+  # Alias: MASTER_SECRET o INSTALLER_MASTER_SECRET (mismo valor que en el VPS).
+  if [[ -n "${MASTER_SECRET:-}" ]]; then
+    export MASTER_SECRET
+  elif [[ -n "${INSTALLER_MASTER_SECRET:-}" ]]; then
+    export MASTER_SECRET="${INSTALLER_MASTER_SECRET}"
+  else
+    yellow "Sin MASTER_SECRET — install.sh omitirá el túnel Chisel al VPS."
+  fi
+  [[ -n "${VPS_REGISTER_URL:-}" ]] && export VPS_REGISTER_URL
+  [[ -n "${EMPRESA_NOMBRE:-}" ]] && export EMPRESA_NOMBRE
+
   # No forzar defaults de admin aquí: install.sh + lib-seed preguntan vía TTY si es limpia.
   if [[ -f "${INSTALL_DIR}/.env" ]]; then
     if [[ -z "${DB_PASSWORD:-}" ]]; then
@@ -236,6 +259,9 @@ main() {
   green "Bootstrap remoto finalizado. Revisá el resumen de install.sh arriba."
   echo "  Dir: ${INSTALL_DIR}"
   echo "  Logs: pm2 logs parkidapp-backend"
+  if systemctl is-active --quiet parkid-tunnel.service 2>/dev/null; then
+    echo "  Túnel: systemctl status parkid-tunnel"
+  fi
 }
 
 main "$@"
