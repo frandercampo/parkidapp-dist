@@ -11,7 +11,7 @@ PARKIDAPP_GITHUB_REPO="${PARKIDAPP_GITHUB_REPO:-frandercampo/parkidapp-dist}"
 REPO="${PARKIDAPP_GITHUB_REPO}"
 TAG="${PARKIDAPP_RELEASE_TAG:-latest}"
 ARCHIVE_NAME="parkidapp-deploy.tar.gz"
-MASTER_SECRET="${MASTER_SECRET:-Parkid_Master_2026_SecureKey_esEDb6vzg29ked!}"
+MASTER_SECRET="${MASTER_SECRET:-}"
 export MASTER_SECRET
 
 red() { printf '\033[0;31m%s\033[0m\n' "$*" >&2; }
@@ -198,7 +198,7 @@ run_installer() {
   migrate_legacy_env
   ensure_db_password
 
-  # Phone-home Chisel: MASTER_SECRET ya tiene default y admite override por entorno.
+  # Phone-home Chisel: sin secreto registra PENDIENTE; con secreto válido, ACTIVO.
   export MASTER_SECRET
   [[ -n "${VPS_REGISTER_URL:-}" ]] && export VPS_REGISTER_URL
   [[ -n "${EMPRESA_NOMBRE:-}" ]] && export EMPRESA_NOMBRE
